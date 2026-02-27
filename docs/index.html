@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Leitner Codex - Apprendre durablement - Flashcards</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="icon" type="image/png" href="mordor-2340048_1280.png">
+    
+    <script>
+      // Fonction pour nettoyer les URLs et éviter le cache
+      function getNoCacheUrl(url) {
+          const separator = url.includes('?') ? '&' : '?';
+          return `${url}${separator}t=${Date.now()}`;
+      }
+
+      // REMPLACEMENT : Fonction locale utilisant le fichier manifeste généré
+      async function fetchCsvFilesLocal() {
+        const files = [];
+        const seen = new Set();
+        
+        // 1. Essayer le fichier manifeste (généré par GitHub Action)
+        try {
+            const response = await fetch(getNoCacheUrl('csv-files.json'));
+            if (response.ok) { // Si le manifeste existe et est valide
+                const jsonFiles = await response.json();
+                jsonFiles.forEach(f => {
+                    const filenameOnly = f.split('/').pop(); // Extraire seulement le nom du fichier pour une déduplication cohérente
+                    if (!seen.has(filenameOnly)) {
+                        files.push({ name: filenameOnly, download_url: f, source: 'manifest' });
+                        seen.add(filenameOnly);
+                    }
+                });
+            }
+        } catch (e) { console.log("Pas de manifeste trouvé."); }
+
+        // 2. SCAN AUTOMATIQUE DU DOSSIER 'csv/' (Pour le local, si le manifeste est vide ou absent)
+        // Cela permet de détecter les nouveaux fichiers sans lancer de script manuel.
+        // On ne scanne que le dossier 'csv/' pour éviter les doublons avec le manifeste
+        // et pour s'assurer que seuls les fichiers de ce dossier sont listés.
+        const pathsToScan = ['csv/'];
+
+        for (const basePath of pathsToScan) {
+            // Si le manifeste a déjà fourni des fichiers, on ne fait pas de scan local pour éviter les doublons
+            // if (files.length > 0 && basePath === 'csv/') continue;
+
+            try {
+                const response = await fetch(basePath);
+                if (response.ok) {
+                    const text = await response.text();
+                    const regex = /href=["']?([^"'>?]+\.csv)["'>]/gi;
+                    let match;
+                    while ((match = regex.exec(text)) !== null) {
+                        let link = decodeURIComponent(match[1]);
+                        const filenameOnly = link.split('/').pop(); // Extraire seulement le nom du fichier
+                        
+                        if (!seen.has(filenameOnly)) {
+                            // S'assurer que downloadUrl est préfixé par 'csv/' si ce n'est pas déjà le cas
+                            let downloadUrl = link; // Par défaut, le lien trouvé
+                            if (!downloadUrl.startsWith('csv/') && !downloadUrl.includes('/')) { // Si c'est juste un nom de fichier comme "fichier.csv"
+                                downloadUrl = basePath + link; // Préfixer avec "csv/"
+                            }
+                            // Si le lien est déjà "csv/fichier.csv", c'est bon.
+
+                            files.push({ name: filenameOnly, download_url: downloadUrl, source: 'auto-detect' });
+                            seen.add(filenameOnly);
+                            console.log(`Fichier détecté (${basePath}) : ${filenameOnly}`);
+                        }
+                    }
+                }
+            } catch (e) { console.log(`Scan impossible pour ${basePath}`); }
+        }
+        
+        if (files.length === 0) throw new Error("Aucun fichier CSV trouvé.\n\nConseil : Créez un dossier 'csv' dans 'docs' et placez-y vos fichiers pour une détection automatique garantie.");
+        
+        // Le Set 'seen' gère déjà la déduplication de base par filenameOnly.
+        // La déduplication finale par Map assure que si, d'une manière ou d'une autre, différents objets
+        // avec le même filenameOnly ont été ajoutés, un seul reste.
+        // Cette étape est principalement pour la robustesse, car 'seen' devrait empêcher la plupart des doublons.
+        return [...new Map(files.map(item => [item.name, item])).values()].sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+      }
+    
+      // --- LOGIQUE DE REMPLISSAGE DU SELECT ---
+      function populateCsvSelect(select, csvFiles, { preferredName = null } = {}) {
+        if (!select) return;
+        
+        if (window.leitnerApp?.ui?.populateCSVSelector) {
+            const resolvedCsvFiles = csvFiles.map(file => {
+                let resolvedUrl = file.download_url;
+                if (!resolvedUrl.startsWith('http://') && !resolvedUrl.startsWith('https://') && !resolvedUrl.startsWith('file://')) {
+                    resolvedUrl = new URL(resolvedUrl, window.location.href).href;
+                }
+                return { ...file, download_url: resolvedUrl };
+            });
+            window.leitnerApp.ui.populateCSVSelector(resolvedCsvFiles, { selectedName: preferredName });
+        } else {
+            // Fallback
+            select.innerHTML = '';
+            if (!csvFiles.length) {
+                select.innerHTML = '<option value="">Aucun fichier trouvé</option>';
+            } else {
+                csvFiles.forEach(file => {
+                    const option = document.createElement('option');
+                    let resolvedUrl = file.download_url;
+                    if (!resolvedUrl.startsWith('http://') && !resolvedUrl.startsWith('https://') && !resolvedUrl.startsWith('file://')) {
+                        resolvedUrl = new URL(resolvedUrl, window.location.href).href;
+                    }
+                    option.value = getNoCacheUrl(resolvedUrl); // On ajoute l'anti-cache ici aussi
+                    option.textContent = file.name;
+                    option.dataset.name = file.name;
+                    if (file.name === preferredName) option.selected = true;
+                    select.appendChild(option);
+                });
+            }
+        }
+      }
+    
+      async function loadCsvFiles({ preserveSelection = true } = {}) {
+        const select = document.getElementById('csv-selector');
+        const status = document.getElementById('csv-load-status');
+        if (!select) return;
+    
+        // Feedback visuel
+        select.disabled = true;
+        const savedText = select.options[select.selectedIndex]?.text;
+        
+        // On ne change le texte que si c'est un chargement manuel (bouton)
+        if(!preserveSelection) select.innerHTML = '<option>Chargement de la liste...</option>';
+        
+        if(status) {
+            status.classList.remove('hidden');
+            status.textContent = "Lecture du catalogue...";
+            status.className = "mt-2 w-full text-sm text-blue-600";
+        }
+    
+        try {
+          const files = await fetchCsvFilesLocal();
+          
+          const currentVal = window.__leitnerSelectedName;
+          const preferredName = preserveSelection ? (currentVal || null) : null;
+    
+          populateCsvSelect(select, files, { preferredName });
+          
+          if(status) {
+              status.textContent = `✔ ${files.length} fichiers disponibles.`;
+              status.className = "mt-2 w-full text-sm text-green-600";
+              setTimeout(() => status.classList.add('hidden'), 4000);
+          }
+
+        } catch (err) {
+          console.error('Erreur chargement CSV :', err);
+          
+          if(!preserveSelection) select.innerHTML = '<option value="">Erreur de chargement</option>';
+          if(status) {
+              status.textContent = "Erreur : " + err.message;
+              status.className = "mt-2 w-full text-sm text-red-600";
+          }
+        } finally {
+          select.disabled = false;
+        }
+      }
+    
+      document.addEventListener('DOMContentLoaded', () => {
+        loadCsvFiles({ preserveSelection: false });
+
+
+
+        document.getElementById('csv-selector')?.addEventListener('change', (e) => {
+            const opt = e.target.options[e.target.selectedIndex];
+            if(opt) window.__leitnerSelectedName = opt.dataset.name;
+        });
+      });
+    
+      function openImportExport() {
+        const select = document.getElementById('csv-selector');
+        const selectedOption = select?.selectedOptions?.[0];
+        let selectedFile = selectedOption?.value;
+    
+        if (!selectedFile) {
+          alert('Veuillez sélectionner un fichier CSV valide.');
+          return;
+        }
+        // On nettoie l'URL pour l'éditeur (pas besoin du timestamp ici)
+        const cleanUrl = selectedFile.split('?')[0];
+        const url = `import-export.html?csv=${encodeURIComponent(cleanUrl)}`;
+        window.open(url, '_blank', 'noopener,noreferrer');
+      }
+    </script>
+</head>
+<body class="site-background text-gray-800">
+    <div class="w-full p-5">
+        <div class="bg-white rounded-lg shadow-md p-5 mb-6">
+            <div class="text-center mb-4 border-b border-gray-100 pb-4">
+                <h1 class="text-2xl font-bold text-gray-800">Leitner Codex : Mémorisation efficace</h1>
+                <p class="text-gray-600 text-sm">Apprenez durablement grâce à la répétition espacée</p>
+                <p class="text-gray-400 text-xs mt-1">Par OM en 2026.01.19</p>            
+            </div>
+
+            <div class="flex flex-wrap justify-between items-center mb-4 gap-2">
+                <div class="flex items-center gap-3">
+                    <h2 class="text-xl font-bold text-gray-800">Choisir un sujet à mémoriser</h2>
+                    <div class="relative group">
+                        <span class="cursor-help text-gray-400 hover:text-blue-600 text-xl">ⓘ</span>
+                        <div class="absolute left-0 top-full mt-2 w-80 p-3 bg-gray-800 text-white text-xs rounded shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 pointer-events-none group-hover:pointer-events-auto leading-relaxed">
+                            Pour utiliser ce site, choisissez un thème, cliquez sur la première boîte, réfléchissez à la réponse, regardez la solution, puis appuyez sur VRAI si vous aviez juste (la carte avance) ou sur FAUX sinon (elle revient dans la boîte 1) ; la date et l’heure de votre prochaine révision apparaissent sous les boîtes.
+                        </div>
+                    </div>
+                    <button id="reset-deck-btn" class="hidden group flex items-center gap-1.5 px-3 py-1 text-xs font-medium text-gray-500 bg-white border border-gray-200 rounded-full hover:border-red-300 hover:text-red-600 hover:bg-red-50 transition-all shadow-sm" title="Réinitialiser la progression de ce paquet (Boîte 1)">
+                        <span class="group-hover:-rotate-180 transition-transform duration-500">↺</span>
+                        <span>Réinitialiser</span>
+                    </button>
+                </div>
+                <p id="csv-load-status" class="text-sm text-green-600 hidden" role="status" aria-live="polite"></p>
+            </div>
+
+            <div class="mb-4">
+                <select id="csv-selector" class="p-2 border rounded w-full">
+                    <option value="">Initialisation...</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="tab-container">
+            <section id="tab-review" class="tab-panel space-y-6" role="tabpanel" aria-labelledby="tab-review-trigger" data-tab-panel="review">
+                <div id="leitner-boxes" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+                    </div>
+
+                <div id="deck-overview-container" class="space-y-6">
+                    </div>
+
+                <div id="card-editor" class="hidden fixed inset-0 flex items-center justify-center p-5 z-50 bg-black bg-opacity-50" role="dialog" aria-modal="true" aria-labelledby="editor-title" aria-hidden="true">
+                    <div class="bg-white rounded-xl shadow-2xl p-6 max-w-3xl w-full max-h-[90vh] overflow-y-auto" tabindex="-1">
+                        <h3 class="text-xl font-bold mb-4" id="editor-title">Nouvelle carte</h3>
+                        <form id="card-form" class="space-y-4">
+                            <input type="hidden" id="card-id">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Question</label>
+                                <textarea id="card-question" class="w-full p-2 border rounded" rows="3" required></textarea>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1" for="card-question-image">Image question</label>
+                                <div class="image-input-wrapper space-y-2">
+                                    <div class="flex flex-col gap-2 md:flex-row md:items-start">
+                                        <div class="flex flex-1 flex-wrap gap-2 md:flex-nowrap">
+                                            <input type="text" id="card-question-image" class="flex-1 p-2 border rounded" placeholder="nom-du-fichier.jpg" aria-describedby="question-image-status">
+                                            <input type="file" id="question-image-upload" class="hidden" accept="image/*">
+                                            <button type="button" id="browse-question-image" class="bg-gray-200 px-3 rounded hover:bg-gray-300">Parcourir</button>
+                                            <button type="button" id="clear-question-image" class="bg-red-100 text-red-600 px-3 rounded hover:bg-red-200">Retirer</button>
+                                        </div>
+                                        <div id="question-image-dropzone" class="image-dropzone" tabindex="0" role="button" aria-describedby="question-image-status">
+                                            <span>Glissez-déposez, collez ou cliquez pour ajouter une image.</span>
+                                        </div>
+                                    </div>
+                                    <p id="question-image-status" class="image-status">Aucune image sélectionnée.</p>
+                                    <img id="question-image-preview" class="image-preview" alt="Prévisualisation de l'image question" aria-hidden="true">
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Réponse</label>
+                                <textarea id="card-answer" class="w-full p-2 border rounded" rows="3" required></textarea>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1" for="card-answer-image">Image réponse</label>
+                                <div class="image-input-wrapper space-y-2">
+                                    <div class="flex flex-col gap-2 md:flex-row md:items-start">
+                                        <div class="flex flex-1 flex-wrap gap-2 md:flex-nowrap">
+                                            <input type="text" id="card-answer-image" class="flex-1 p-2 border rounded" placeholder="nom-du-fichier.jpg" aria-describedby="answer-image-status">
+                                            <input type="file" id="answer-image-upload" class="hidden" accept="image/*">
+                                            <button type="button" id="browse-answer-image" class="bg-gray-200 px-3 rounded hover:bg-gray-300">Parcourir</button>
+                                            <button type="button" id="clear-answer-image" class="bg-red-100 text-red-600 px-3 rounded hover:bg-red-200">Retirer</button>
+                                        </div>
+                                        <div id="answer-image-dropzone" class="image-dropzone" tabindex="0" role="button" aria-describedby="answer-image-status">
+                                            <span>Glissez-déposez, collez ou cliquez pour ajouter une image.</span>
+                                        </div>
+                                    </div>
+                                    <p id="answer-image-status" class="image-status">Aucune image sélectionnée.</p>
+                                    <img id="answer-image-preview" class="image-preview" alt="Prévisualisation de l'image réponse" aria-hidden="true">
+                                </div>
+                            </div>
+                            <div class="flex justify-end gap-3 pt-4">
+                                <button type="button" id="cancel-edit" class="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600">
+                                    Annuler
+                                </button>
+                                <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
+                                    Sauvegarder
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <div id="flashcard-container" class="hidden fixed inset-0 flex items-center justify-center p-5 z-50 bg-black bg-opacity-50" role="dialog" aria-modal="true" aria-labelledby="question-content" aria-hidden="true">
+                    <div class="flashcard bg-white rounded-xl shadow-2xl p-6 max-w-3xl w-full max-h-[90vh] overflow-y-auto" tabindex="-1">
+                        <div class="question-section bg-gray-50 rounded-lg p-4 mb-5">
+                            <h3 class="font-bold text-lg mb-3">Question</h3>
+                            <div id="question-content" class="text-lg my-4"></div>
+                        </div>
+                        <button id="show-answer-btn" class="w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 mb-5">
+                            Voir la réponse
+                        </button>
+                        <div id="answer-section" class="hidden bg-gray-100 rounded-lg p-4 mt-5">
+                            <h3 class="font-bold text-lg mb-3">Réponse</h3>
+                            <div id="answer-content" class="text-lg my-4"></div>
+                            
+                            <div class="mt-4 border-t pt-4">
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Difficulté ressentie :</label>
+                                <div class="flex flex-wrap gap-4" id="difficulty-options">
+                                    <label class="inline-flex items-center cursor-pointer bg-white px-3 py-2 rounded border hover:bg-gray-50">
+                                        <input type="radio" name="difficulty" value="easy" class="w-4 h-4 text-green-600 border-gray-300 focus:ring-green-500">
+                                        <span class="ml-2 text-sm font-medium text-gray-700">Facile</span>
+                                    </label>
+                                    <label class="inline-flex items-center cursor-pointer bg-white px-3 py-2 rounded border hover:bg-gray-50">
+                                        <input type="radio" id="difficulty-normal" name="difficulty" value="normal" class="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500" checked>
+                                        <span class="ml-2 text-sm font-medium text-gray-700">Normale</span>
+                                    </label>
+                                    <label class="inline-flex items-center cursor-pointer bg-white px-3 py-2 rounded border hover:bg-gray-50">
+                                        <input type="radio" name="difficulty" value="hard" class="w-4 h-4 text-red-600 border-gray-300 focus:ring-red-500">
+                                        <span class="ml-2 text-sm font-medium text-gray-700">Difficile</span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div class="flex flex-wrap gap-3 mt-6">
+                                <button id="wrong-answer" class="flex-1 bg-red-500 text-white py-2 rounded-lg font-bold hover:bg-red-600">
+                                    Faux
+                                </button>
+                                <button id="right-answer" class="flex-1 bg-green-500 text-white py-2 rounded-lg font-bold hover:bg-green-600">
+                                    Vrai
+                                </button>
+                            </div>
+                        </div>
+                        <div class="mt-4 flex justify-between">
+                            <button id="edit-card-btn" class="text-blue-600 hover:text-blue-800">
+                                Modifier
+                            </button>
+                            <button id="delete-card-btn" class="text-red-600 hover:text-red-800">
+                                Supprimer
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="admin-button" id="admin-button">
+                    ⚙️
+                </div>
+
+                <div id="admin-panel" class="hidden fixed inset-0 flex items-center justify-center p-5 z-50 bg-black bg-opacity-50" role="dialog" aria-modal="true" aria-labelledby="admin-panel-title" aria-hidden="true" tabindex="-1">
+                    <div class="bg-white rounded-xl shadow-2xl p-6 max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="text-xl font-bold" id="admin-panel-title">Paramètres Administrateur</h3>
+                            <button id="close-admin" class="text-gray-500 hover:text-gray-700 text-xl">
+                                ✕
+                            </button>
+                        </div>
+
+                        <div class="space-y-6">
+                            <div class="github-config bg-gray-100 rounded-lg p-4">
+                                <h4 class="font-bold text-lg mb-3">Configuration GitHub</h4>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">Propriétaire du dépôt</label>
+                                        <input type="text" id="repo-owner" class="w-full p-2 border rounded" placeholder="votre-nom-utilisateur">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">Nom du dépôt</label>
+                                        <input type="text" id="repo-name" class="w-full p-2 border rounded" placeholder="nom-du-dépôt">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">Chemin du dossier (optionnel)</label>
+                                        <input type="text" id="repo-path" class="w-full p-2 border rounded" placeholder="docs/">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">Branche (optionnel)</label>
+                                        <input type="text" id="repo-branch" class="w-full p-2 border rounded" placeholder="main">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">Token d'accès (optionnel)</label>
+                                        <input type="password" id="github-token" class="w-full p-2 border rounded" placeholder="ghp_xxx">
+                                        <p class="text-xs text-gray-500 mt-1">Nécessaire seulement pour les dépôts privés</p>
+                                    </div>
+                                </div>
+                                <div class="github-config__actions">
+                                    <button id="load-github-csv" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
+                                        Charger les fichiers depuis GitHub
+                                    </button>
+                                    <button id="open-github-guide" class="bg-slate-700 text-white px-4 py-2 rounded hover:bg-slate-800">
+                                        📘 Explication du processus
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="tab-packs" class="tab-panel hidden" role="tabpanel" aria-labelledby="tab-packs-trigger" data-tab-panel="packs">
+                <div class="bg-white rounded-lg shadow-md p-6">
+                    <h2 class="text-xl font-bold mb-2">Mes paquets</h2>
+                    <p class="text-gray-600">La gestion détaillée des collections sera introduite lors des phases suivantes. Vous pouvez déjà consulter vos cartes via le bouton Révision.</p>
+                </div>
+            </section>
+
+            <section id="tab-stats" class="tab-panel hidden" role="tabpanel" aria-labelledby="tab-stats-trigger" data-tab-panel="stats">
+                <div class="bg-white rounded-lg shadow-md p-6">
+                    <h2 class="text-2xl font-bold mb-6">Tableau de bord</h2>
+
+                    <div class="statistics-dashboard__summary mb-8">
+                        <div class="progress-badge progress-badge--primary">
+                            <span class="progress-badge__value" id="stat-total-reviewed">0</span>
+                            <span class="progress-badge__label">Cartes révisées aujourd'hui</span>
+                        </div>
+                        <div class="progress-badge progress-badge--success">
+                            <span class="progress-badge__value" id="stat-success-rate">0%</span>
+                            <span class="progress-badge__label">Taux de réussite</span>
+                        </div>
+                        <div class="progress-badge progress-badge--warning">
+                            <span class="progress-badge__value" id="stat-streak">0</span>
+                            <span class="progress-badge__label">Série actuelle</span>
+                        </div>
+                    </div>
+
+                    <div class="statistics-dashboard__panel mb-8">
+                        <h3 class="statistics-dashboard__panel-title mb-4">Répartition par difficulté</h3>
+                        <div class="grid grid-cols-3 gap-4 text-center">
+                            <div class="p-3 bg-green-50 rounded-lg border border-green-200">
+                                <span class="block text-2xl font-bold text-green-700" id="stat-count-easy">0</span>
+                                <span class="text-xs text-green-600 uppercase font-semibold">Facile</span>
+                            </div>
+                            <div class="p-3 bg-blue-50 rounded-lg border border-blue-200">
+                                <span class="block text-2xl font-bold text-blue-700" id="stat-count-normal">0</span>
+                                <span class="text-xs text-blue-600 uppercase font-semibold">Normale</span>
+                            </div>
+                            <div class="p-3 bg-red-50 rounded-lg border border-red-200">
+                                <span class="block text-2xl font-bold text-red-700" id="stat-count-hard">0</span>
+                                <span class="text-xs text-red-600 uppercase font-semibold">Difficile</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="statistics-dashboard__panel">
+                        <div class="flex justify-between items-center mb-4 border-b pb-2">
+                            <h3 class="text-lg font-bold text-gray-700">Historique des sessions</h3>
+                            <button id="btn-clear-history" class="text-sm text-red-500 hover:text-red-700 underline cursor-pointer">
+                                Effacer l'historique
+                            </button>
+                        </div>
+                        <ul id="stats-history-list" class="stats-history max-h-64 overflow-y-auto">
+                            <li class="p-4 text-center text-gray-500 italic">Aucune session terminée pour le moment.</li>
+                        </ul>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <div id="import-export-modal" class="hidden import-export-modal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="import-export-title">
+            <div class="import-export-modal__dialog" role="document">
+                <div class="import-export-modal__header">
+                    <h3 id="import-export-title">Import / Export des cartes</h3>
+                    <button id="close-import-export" class="import-export-modal__close" aria-label="Fermer la fenêtre Import/Export">✕</button>
+                </div>
+                <div class="import-export-modal__body">
+                    <p class="import-export-modal__description">
+                        Gérez vos cartes directement dans ce tableau : modifiez les questions, images, réponses ainsi que leur boîte et la date de révision.
+                    </p>
+                    <div id="csv-inline-editor" class="csv-inline-editor__wrapper" aria-live="polite"></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="github-guide-modal" class="hidden fixed inset-0 flex items-center justify-center p-5 z-50 bg-black bg-opacity-50" role="dialog" aria-modal="true" aria-labelledby="github-guide-title" aria-hidden="true" tabindex="-1">
+            <div class="github-guide__dialog" role="document">
+                <div class="github-guide__header">
+                    <h3 id="github-guide-title" class="text-xl font-bold">🎓 De Zéro à Héros : Créez votre propre site</h3>
+                    <button id="close-github-guide" class="github-guide__close" aria-label="Fermer le guide">
+                        ✕
+                    </button>
+                </div>
+                <div class="github-guide__body">
+                    <div class="space-y-6 text-gray-700 text-sm md:text-base">
+                        <p class="italic text-gray-600 border-l-4 border-yellow-400 pl-3">
+                            Pas de panique ! Vous n'avez besoin d'aucune connaissance en code. Suivez simplement ces 6 étapes comme une recette de cuisine pour avoir votre propre application de révision.
+                        </p>
+
+                        <section>
+                            <h4 class="font-bold text-lg text-purple-600 mb-2">Étape 1 : Le Passeport (Compte GitHub) 🆔</h4>
+                            <p>GitHub est le site qui va héberger vos cartes gratuitement. C'est votre "disque dur" sur internet.</p>
+                            <ol class="list-decimal list-inside ml-2 mt-1 space-y-1 bg-purple-50 p-2 rounded">
+                                <li>Allez sur <a href="https://github.com/signup" target="_blank" class="text-blue-600 underline font-bold">github.com</a>.</li>
+                                <li>Cliquez sur <strong>"Sign up"</strong> et créez votre compte (c'est gratuit).</li>
+                                <li>Validez votre email. C'est la base de tout !</li>
+                            </ol>
+                        </section>
+
+                        <section>
+                            <h4 class="font-bold text-lg text-purple-600 mb-2">Étape 2 : La Copie (Le Fork) 🍴</h4>
+                            <p>Vous ne pouvez pas modifier MON site, mais vous pouvez en faire une copie pour VOUS.</p>
+                            <ol class="list-decimal list-inside ml-2 mt-1 space-y-1 bg-purple-50 p-2 rounded">
+                                <li>Connectez-vous à GitHub.</li>
+                                <li>Allez sur mon projet : <a href="https://github.com/cfcleitner/cfcleitner1" target="_blank" class="text-blue-600 underline font-bold">https://github.com/cfcleitner/cfcleitner1</a>.</li>
+                                <li>En haut à droite, cherchez le bouton <strong>"Fork"</strong> et cliquez dessus.</li>
+                                <li>Cliquez sur "Create fork".</li>
+                                <li><strong>Important :</strong> Vous êtes maintenant sur <em>votre</em> page projet (votre copie). Gardez ce bouton ouvert ou mettez-le en favori. C'est ici que vous déposerez vos fichiers plus tard.</li>
+                            </ol>
+                        </section>
+
+                        <section>
+                            <h4 class="font-bold text-lg text-blue-600 mb-2">Étape 3 : La Fabrication (Local) 🛠️</h4>
+                            <p>Revenez sur <strong>cette page</strong> (l'outil où vous lisez ce guide). Vous allez travailler "localement" dans votre navigateur pour créer le contenu.</p>
+                            <ol class="list-decimal list-inside ml-2 mt-1 space-y-1 bg-blue-50 p-2 rounded">
+                                <li>Fermez ce guide et cliquez sur <strong>"Import / Export avancé"</strong>.</li>
+                                <li>Créez vos cartes (Questions/Réponses/Images).</li>
+                                <li>Cliquez sur <strong>"Exporter en CSV"</strong>.</li>
+                                <li>Le fichier se télécharge <strong>sur votre ordinateur</strong> (dossier Téléchargements). C'est votre "cartouche" de jeu.</li>
+                                <li>Renommez ce fichier (ex: <code>HISTOIRE_Rome.csv</code>) pour bien l'identifier.</li>
+                            </ol>
+                        </section>
+
+                        <section>
+                            <h4 class="font-bold text-lg text-red-600 mb-2">Étape 4 : Préparation sur votre ordinateur 📂</h4>
+                            <p>Avant d'envoyer quoi que ce soit, organisez vos fichiers sur votre ordinateur en respectant <strong>scrupuleusement</strong> cette structure :</p>
+                            <p>Conseil d'ami : un nom de fichier pour une question....."nom_fichier_Q.jpg", pour une réponse....."nom_fichier_R.jpg".</p>
+                            <p>Et pas comme dans l'image... éviter les fichiers trop longs...pffff !!!</p>
+                            <img
+                                src="images_guides/leitnercfc.jpg"
+                                alt="Structure de dossiers et fichiers à respecter"
+                                class="w-full max-w-4xl mx-auto rounded border border-gray-300 shadow-sm"
+                            >
+                            <p class="text-xs text-red-500 mt-2 font-bold">
+                                ⚠️ Règle d'or : Pas d'espaces, pas d'accents, pas de caractères spéciaux (comme :) dans les noms de fichiers !
+                            </p>
+                            <div class="mt-3 bg-yellow-50 p-2 rounded border border-yellow-200 text-sm">
+                                <strong>💡 Astuce de génie pour les catégories :</strong><br>
+                                Pour créer des dossiers dans le menu, utilisez le tiret du bas <code>_</code> dans le nom du fichier.<br>
+                                • <code>HISTOIRE_questions_blabla.csv</code> se rangera dans <strong>HISTOIRE</strong><br>
+                                • <code>ELECTRO_quest_triphas.csv</code> se rangera dans <strong>ELECTRO</strong>
+                            </div>
+                            <p class="text-xs text-red-500 mt-2 font-bold">⚠️ Règle d'or : Pas d'espaces, pas d'accents, pas de caractères spéciaux (comme :) dans les noms de fichiers !</p>
+                        </section>
+
+                        <section>
+                            <h4 class="font-bold text-lg text-green-600 mb-2">Étape 5 : La Livraison (Vers le Fork) 🚀</h4>
+                            <p>Il faut maintenant envoyer votre fichier (qui est sur votre ordinateur) vers votre site (votre Fork GitHub).</p>
+                            <ol class="list-decimal list-inside ml-2 mt-1 space-y-1 bg-green-50 p-2 rounded">
+                                <li>Retournez sur le bouton GitHub de <strong>votre projet</strong> (créé à l'étape 2).</li>
+                                <li>Cliquez sur le dossier <strong>docs</strong> dans la liste des fichiers.</li>
+                                <li>Cliquez sur le dossier <strong>csv</strong>. Pour votre fichier que vous venez de créer, Exemple : <code>LITTERATURE_questions_matu.CSV</code></li>
+                                <li>En haut à droite, cliquez sur <strong>"Add file"</strong> puis <strong>"Upload files"</strong>.</li>
+                                <li>Glissez votre fichier CSV depuis votre ordinateur vers la zone <strong>Drag files here to add them to your repository</strong></li>
+                                <li>Validez en cliquant sur le bouton vert <strong>"Commit changes"</strong>. (Pour les geek.ettes) Vous pouvez ajouter des commentaires...</li>
+                                <li>Pour vos images il faut "remonter" avec les ".." (dossier parent) pour voir les dossiers d'images. Et refaire les actions ci-dessus.</li>
+                            </ol>
+                            <p class="mt-2 font-bold text-green-700">Bravo ! Votre site personnel va détecter ce nouveau fichier et l'ajoutera automatiquement à la liste déroulante des fichiers csv disponibles.</p>
+                        </section>
+
+                        <section>
+                            <h4 class="font-bold text-lg text-orange-600 mb-2">Étape 6 : L'Activation (GitHub Pages) 🌍</h4>
+                            <p>Dernière étape : obtenir votre propre adresse web (URL) pour partager votre site.</p>
+                            <ol class="list-decimal list-inside ml-2 mt-1 space-y-1 bg-orange-50 p-2 rounded">
+                                <li>Sur votre projet GitHub, cliquez sur le bouton <strong>Settings</strong> (Paramètres) tout en haut.</li>
+                                <li>Dans le menu de gauche, cliquez sur <strong>Pages</strong>.</li>
+                                <li>Dans la zone "Branch", vérifiez que <strong>main</strong> est choisi, et changez le dossier de "/ (root)" vers <strong>/docs</strong>.</li>
+                                <li>Cliquez sur le bouton <strong>Save</strong>.</li>
+                                <li>Attendez 1 à 2 minutes puis rafraîchissez la page. Un lien apparaît en haut (ex: <code>https://votre-nom.github.io/...</code>). C'est votre site !</li>
+                            </ol>
+                        </section>
+                    </div>
+                    <footer class="github-guide__footer">
+                        <p class="mt-4 text-center text-gray-500 text-xs">Besoin de revoir ce guide ? Cliquez sur "🧭 Guide pour débutant" à tout moment.</p>
+                    </footer>
+                </div>
+            </div>
+        </div>
+
+        <div id="statsModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="stats-modal-title" aria-hidden="true">
+            <div class="modal-content" role="document">
+                <button type="button" class="close" data-action="close-stats" aria-label="Fermer la fenêtre Statistiques">&times;</button>
+                <h2 id="stats-modal-title" class="text-2xl font-bold mb-4">📊 Statistiques</h2>
+            </div>
+        </div>
+
+    <div id="menu-container" class="fixed bottom-6 left-6 z-50 flex flex-col items-start gap-4">
+        <div id="main-menu-content" class="hidden flex-col bg-white rounded-2xl shadow-2xl p-2 mb-2 min-w-[220px] origin-bottom-left transition-all duration-200 border border-gray-100">
+            <nav class="flex flex-col space-y-1" role="tablist">
+                <button id="tab-review-trigger" class="tab-button flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-colors bg-blue-600 text-white shadow-sm" role="tab" aria-selected="true" aria-controls="tab-review" data-tab-target="review">
+                    <span class="text-lg">📝</span>
+                    <span class="font-bold text-sm">Révision</span>
+                </button>
+                <button id="tab-stats-trigger" class="tab-button flex items-center gap-3 px-4 py-3 rounded-xl text-left text-gray-600 hover:bg-gray-100 transition-colors" role="tab" aria-selected="false" aria-controls="tab-stats" data-tab-target="stats">
+                    <span class="text-lg">📊</span>
+                    <span class="font-bold text-sm">Statistiques</span>
+                </button>
+                <button id="open-import-export" class="tab-button flex items-center gap-3 px-4 py-3 rounded-xl text-left text-gray-600 hover:bg-gray-100 transition-colors" type="button" data-action="open-import-export">
+                    <span class="text-lg">⇄</span>
+                    <span class="font-bold text-sm">Import / Export</span>
+                </button>
+                <div class="h-px bg-gray-200 my-1"></div>
+                <button id="beginner-guide-btn" class="flex items-center gap-3 px-4 py-3 rounded-xl text-left text-purple-700 hover:bg-purple-50 transition-colors" type="button">
+                    <span class="text-lg">🎓</span>
+                    <span class="font-bold text-sm">Guide débutant</span>
+                </button>
+            </nav>
+        </div>
+
+        <button id="main-menu-trigger" class="bg-gray-900 text-white w-14 h-14 rounded-full shadow-xl flex items-center justify-center hover:bg-gray-800 hover:scale-105 transition-all focus:outline-none focus:ring-4 focus:ring-gray-300" aria-label="Menu principal" aria-expanded="false">
+            <span class="text-2xl leading-none">☰</span>
+        </button>
+    </div>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script type="module" src="src/main.js"></script>
+</body>
+</html>
