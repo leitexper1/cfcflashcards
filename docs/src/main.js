@@ -212,7 +212,7 @@ const UI = {
         if (document.getElementById('mathjax-script')) return;
         window.MathJax = {
             tex: { inlineMath: [['$', '$'], ['\\(', '\\)']] },
-            svg: { fontCache: 'global' },
+            svg: { fontCache: 'none' },
             startup: { typeset: false }
         };
         const script = document.createElement('script');
@@ -823,6 +823,12 @@ const CoreApp = {
 
     closeFlashcard: () => {
         const el = document.getElementById('flashcard-container');
+        // Correction accessibilité : s'assurer qu'aucun élément dans le conteneur n'a le focus avant de le cacher.
+        if (document.activeElement && el.contains(document.activeElement)) {
+            // Retirer le focus déplace le focus vers le corps du document, évitant l'erreur.
+            document.activeElement.blur();
+        }
+
         el.classList.add('hidden');
         el.setAttribute('aria-hidden', 'true');
         CoreApp.renderBoxes();
