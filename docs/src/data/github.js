@@ -204,6 +204,13 @@ export class GitHubManager {
             }
         }
 
+        // Si un manifeste a été trouvé, on l'utilise et on évite le scan de répertoire
+        // qui provoque des erreurs 404 sur GitHub Pages (listing de répertoire interdit).
+        if (foundFiles.length > 0) {
+            this.localBaseUrl = baseUrl.href;
+            return foundFiles;
+        }
+
         // Scan root and csv/ subdirectory for local files
         const scanTargets = [baseUrl.href];
         try { scanTargets.push(new URL('csv/', baseUrl).href); } catch(e) {}
