@@ -1,6 +1,8 @@
 [
-  "csv/ELECTRONIQUE_generalites.csv",
+  "csv/ELECTRO_formules.csv",
   "csv/ELECTRO_formules_1.csv",
+  "csv/ELECTRO_generalites.csv",
+  "csv/ELECTRONIQUE_generalites.csv",
   "csv/MATERIEL_cfc_pele.csv",
   "csv/MATERIEL_installation.csv",
   "csv/NIBT_definitions.csv",
