@@ -96,6 +96,7 @@ const UI = {
         UI.setupTabListeners();
         UI.setupImageZoom();
         UI.setupMenu();
+        UI.setupMathJax();
     },
 
     loadConfig: () => {
@@ -205,6 +206,20 @@ const UI = {
         content.querySelectorAll('button').forEach(btn => {
             btn.addEventListener('click', () => toggleMenu(true));
         });
+    },
+
+    setupMathJax: () => {
+        if (document.getElementById('mathjax-script')) return;
+        window.MathJax = {
+            tex: { inlineMath: [['$', '$'], ['\\(', '\\)']] },
+            svg: { fontCache: 'global' },
+            startup: { typeset: false }
+        };
+        const script = document.createElement('script');
+        script.id = 'mathjax-script';
+        script.src = 'https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js';
+        script.async = true;
+        document.head.appendChild(script);
     },
 
     setupImageZoom: () => {
@@ -1030,6 +1045,10 @@ const CoreApp = {
                 container.appendChild(section);
             }
         });
+
+        if (window.MathJax && window.MathJax.typesetPromise) {
+            window.MathJax.typesetPromise([container]).catch(() => {});
+        }
     },
 
     buildImageUrl: (filename, type) => {
@@ -1196,6 +1215,13 @@ const CoreApp = {
         if (aImgUrl) aHtml += `<img src="${aImgUrl}" class="max-w-full h-auto mt-4 rounded shadow-sm mx-auto max-h-60 object-contain" onerror="this.style.display='none'">`;
         document.getElementById('answer-content').innerHTML = aHtml;
         
+        if (window.MathJax && window.MathJax.typesetPromise) {
+            window.MathJax.typesetPromise([
+                document.getElementById('question-content'),
+                document.getElementById('answer-content')
+            ]).catch(() => {});
+        }
+
         // Ajout des écouteurs pour le zoom
         ['question-content', 'answer-content'].forEach(id => {
             const img = document.getElementById(id).querySelector('img');
