@@ -1,5 +1,6 @@
 [
   "csv/ELECTRO_formules_1.csv",
+  "csv/MATERIEL_cfc_pele.csv",
   "csv/MATERIEL_installation.csv",
   "csv/NIBT_definitions.csv",
   "csv/NIBT_oibt_question_1.csv",
