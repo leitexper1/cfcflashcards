@@ -199,18 +199,24 @@
             <div class="flex flex-wrap justify-between items-center mb-4 gap-2">
                 <div class="flex items-center gap-3">
                     <h2 class="text-xl font-bold text-gray-800">Choisir un sujet à mémoriser</h2>
-                    <div class="relative group">
-                        <span class="cursor-help text-gray-400 hover:text-blue-600 text-xl">ⓘ</span>
-                        <div class="absolute left-0 top-full mt-2 w-80 p-3 bg-gray-800 text-white text-xs rounded shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 pointer-events-none group-hover:pointer-events-auto leading-relaxed">
-                            Pour utiliser ce site, choisissez un thème, cliquez sur la première boîte, réfléchissez à la réponse, regardez la solution, puis appuyez sur VRAI si vous aviez juste (la carte avance) ou sur FAUX sinon (elle revient dans la boîte 1) ; la date et l’heure de votre prochaine révision apparaissent sous les boîtes.
-                        </div>
-                    </div>
                     <button id="reset-deck-btn" class="hidden group flex items-center gap-1.5 px-3 py-1 text-xs font-medium text-gray-500 bg-white border border-gray-200 rounded-full hover:border-red-300 hover:text-red-600 hover:bg-red-50 transition-all shadow-sm" title="Réinitialiser la progression de ce paquet (Boîte 1)">
                         <span class="group-hover:-rotate-180 transition-transform duration-500">↺</span>
                         <span>Réinitialiser</span>
                     </button>
+                    <button id="export-deck-btn" class="hidden flex items-center gap-1.5 px-3 py-1 text-xs font-medium text-blue-600 bg-blue-50 border border-blue-200 rounded-full hover:bg-blue-100 hover:border-blue-300 transition-all shadow-sm" title="Télécharger ce paquet (ou ce mix) en fichier CSV">
+                        <span>📥</span>
+                        <span>Exporter</span>
+                    </button>
+                    <button id="global-mix-btn" class="flex items-center gap-1.5 px-3 py-1 text-xs font-medium text-purple-600 bg-purple-50 border border-purple-200 rounded-full hover:bg-purple-100 hover:border-purple-300 transition-all shadow-sm" title="Créer une session aléatoire multi-sujets">
+                        <span>🎲</span>
+                        <span>Mix Aléatoire</span>
+                    </button>
                 </div>
                 <p id="csv-load-status" class="text-sm text-green-600 hidden" role="status" aria-live="polite"></p>
+            </div>
+
+            <div class="bg-blue-50 border-l-4 border-blue-400 p-4 mb-4 rounded-r shadow-sm">
+                <p class="text-sm text-blue-800 leading-relaxed"><strong>Comment ça marche ?</strong> Choisissez un thème ci-dessous, cliquez sur la première boîte, réfléchissez à la réponse, regardez la solution, puis appuyez sur <strong>VRAI</strong> si vous aviez juste (la carte avance) ou sur <strong>FAUX</strong> sinon (elle revient dans la boîte 1). La date de votre prochaine révision s'affiche sous les boîtes.</p>
             </div>
 
             <div class="mb-4">
@@ -575,6 +581,74 @@
             <div class="modal-content" role="document">
                 <button type="button" class="close" data-action="close-stats" aria-label="Fermer la fenêtre Statistiques">&times;</button>
                 <h2 id="stats-modal-title" class="text-2xl font-bold mb-4">📊 Statistiques</h2>
+            </div>
+        </div>
+
+        <!-- MODAL DE SÉLECTION POUR LE MIX -->
+        <div id="mix-selection-modal" class="hidden fixed inset-0 flex items-center justify-center p-5 z-50 bg-black bg-opacity-50" role="dialog" aria-modal="true" aria-labelledby="mix-modal-title" aria-hidden="true">
+            <div class="bg-white rounded-xl shadow-2xl p-6 max-w-lg w-full max-h-[90vh] flex flex-col">
+                <div class="flex justify-between items-center mb-4 border-b pb-2">
+                    <h3 id="mix-modal-title" class="text-xl font-bold text-purple-700">🥗 Composer votre Mix</h3>
+                    <button class="close-mix-modal text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
+                </div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4 border-b pb-4">
+                    <div>
+                        <label for="mix-card-count" class="block text-sm font-medium text-gray-700">Cartes par paquet</label>
+                        <input type="number" id="mix-card-count" value="5" min="1" class="mt-1 w-full p-2 border rounded focus:ring-purple-500 focus:border-purple-500">
+                    </div>
+                    <div class="flex items-center justify-start md:justify-center md:pt-6">
+                        <label class="flex items-center gap-2 cursor-pointer p-2 rounded hover:bg-gray-100">
+                            <input type="checkbox" id="mix-shuffle-globally" checked class="w-5 h-5 text-purple-600 rounded focus:ring-purple-500">
+                            <span class="text-sm font-medium text-gray-700 select-none">Mélanger tous les sujets</span>
+                        </label>
+                    </div>
+                </div>
+
+
+                <p class="text-sm text-gray-600 mb-2">Sélectionnez les paquets à inclure :</p>
+                <div class="flex gap-2 mb-2">
+                    <button id="mix-select-all" class="text-xs bg-gray-200 hover:bg-gray-300 px-2 py-1 rounded">Tout cocher</button>
+                    <button id="mix-select-none" class="text-xs bg-gray-200 hover:bg-gray-300 px-2 py-1 rounded">Tout décocher</button>
+                </div>
+
+                <div id="mix-checkbox-list" class="flex-1 overflow-y-auto border rounded p-3 bg-gray-50 space-y-2 mb-4 min-h-[150px]">
+                    <!-- Les checkboxes seront injectées ici par JS -->
+                </div>
+
+                <button id="btn-launch-mix" class="w-full bg-purple-600 text-white py-3 rounded-lg font-bold hover:bg-purple-700 shadow-md transition-transform transform hover:scale-[1.02]">🚀 Lancer le mélange</button>
+            </div>
+        </div>
+
+        <!-- MODAL CONFIGURATION INTERVALLE -->
+        <div id="interval-config-modal" class="hidden fixed inset-0 flex items-center justify-center p-5 z-[60] bg-black bg-opacity-50" role="dialog" aria-modal="true" aria-labelledby="interval-modal-title" aria-hidden="true">
+            <div class="bg-white rounded-xl shadow-2xl p-6 max-w-sm w-full">
+                <h3 id="interval-modal-title" class="text-lg font-bold text-gray-800 mb-4">⏱️ Intervalle Boîte <span id="interval-box-num"></span></h3>
+                <p class="text-sm text-gray-600 mb-4">Combien de temps attendre avant de revoir les cartes de cette boîte ?</p>
+                
+                <form id="interval-form" class="space-y-4">
+                    <input type="hidden" id="config-box-id">
+                    <div class="flex gap-2">
+                        <input type="number" id="interval-value" min="1" class="w-1/3 p-2 border rounded text-center" required>
+                        <select id="interval-unit" class="w-2/3 p-2 border rounded bg-white">
+                            <option value="minutes">Minutes</option>
+                            <option value="hours">Heures</option>
+                            <option value="days">Jours</option>
+                        </select>
+                    </div>
+                    <div class="flex items-center gap-2 px-1">
+                        <input type="checkbox" id="interval-apply-all" checked class="w-4 h-4 text-blue-600 rounded focus:ring-blue-500">
+                        <label for="interval-apply-all" class="text-sm text-gray-700">Mettre à jour les autres boîtes (proportionnel)</label>
+                    </div>
+                    <div class="text-center p-2 bg-gray-100 rounded border">
+                        <p class="text-xs text-gray-500">Prochaine révision estimée :</p>
+                        <p id="interval-preview-date" class="font-bold text-blue-600">-</p>
+                    </div>
+                    <div class="flex justify-end gap-2 pt-2">
+                        <button type="button" class="close-interval-modal px-4 py-2 text-gray-600 hover:bg-gray-100 rounded">Annuler</button>
+                        <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 font-medium">Enregistrer</button>
+                    </div>
+                </form>
             </div>
         </div>
 

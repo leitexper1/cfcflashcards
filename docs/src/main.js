@@ -8,16 +8,52 @@ const STORAGE_KEYS = {
     ALL_SESSIONS: 'leitner_sessions_list', 
     CONFIG: 'leitner_config',
     CARD_STATE: 'leitner_card_state',
-    DECK_STATS: 'leitner_deck_stats' // Nouveau : Compteurs de cycles réussis par fichier
+    DECK_STATS: 'leitner_deck_stats',
+    BOX_INTERVALS: 'leitner_box_intervals' // Nouvelle clé pour les intervalles personnalisés
 };
-
-const BOX_INTERVALS = { 1: 1, 2: 3, 3: 7, 4: 14, 5: 30 };
 
 const APP_STATE = {
     currentDeck: [],
     session: null,
     isResuming: false,
     config: { owner: 'leitexper1', repo: 'testleitnercodex', branch: 'main', path: 'docs/' }
+};
+
+// --- GESTIONNAIRE D'INTERVALLES (Temps entre les révisions) ---
+const IntervalManager = {
+    defaults: {
+        1: { val: 1, unit: 'days' },
+        2: { val: 3, unit: 'days' },
+        3: { val: 7, unit: 'days' },
+        4: { val: 14, unit: 'days' },
+        5: { val: 30, unit: 'days' }
+    },
+    getAll: () => {
+        return JSON.parse(localStorage.getItem(STORAGE_KEYS.BOX_INTERVALS) || 'null') || IntervalManager.defaults;
+    },
+    get: (boxNum) => {
+        return IntervalManager.getAll()[boxNum] || { val: 1, unit: 'days' };
+    },
+    set: (boxNum, val, unit) => {
+        const current = IntervalManager.getAll();
+        current[boxNum] = { val: parseInt(val), unit };
+        localStorage.setItem(STORAGE_KEYS.BOX_INTERVALS, JSON.stringify(current));
+    },
+    // Recalcule toutes les boîtes en gardant les proportions (1, 3, 7, 14, 30)
+    updateAllBasedOn: (sourceBox, val, unit) => {
+        const ratios = { 1: 1, 2: 3, 3: 7, 4: 14, 5: 30 };
+        const sourceRatio = ratios[sourceBox] || 1;
+        // On calcule la valeur de base (équivalent Boîte 1)
+        const baseVal = val / sourceRatio;
+        
+        const current = IntervalManager.getAll();
+        Object.keys(ratios).forEach(boxNum => {
+            let newVal = Math.round(baseVal * ratios[boxNum]);
+            if (newVal < 1) newVal = 1;
+            current[boxNum] = { val: newVal, unit: unit };
+        });
+        localStorage.setItem(STORAGE_KEYS.BOX_INTERVALS, JSON.stringify(current));
+    }
 };
 
 // --- 1. PERSISTANCE & STATS GLOBALES ---
@@ -756,6 +792,7 @@ const CoreApp = {
                 }
 
                 document.getElementById('reset-deck-btn')?.classList.remove('hidden');
+                document.getElementById('export-deck-btn')?.classList.remove('hidden'); // Afficher export pour les fichiers normaux aussi
                 CoreApp.renderBoxes();
                 CoreApp.renderDeckOverview();
                 StatsUI.renderDifficultyStats();
@@ -806,6 +843,21 @@ const CoreApp = {
         document.getElementById('cancel-edit')?.addEventListener('click', () => CoreApp.closeEditor());
         document.getElementById('card-form')?.addEventListener('submit', (e) => CoreApp.saveCard(e));
         document.getElementById('reset-deck-btn')?.addEventListener('click', () => CoreApp.resetCurrentDeck());
+        
+        // Nouveaux écouteurs pour le Mix et l'Export
+        document.getElementById('export-deck-btn')?.addEventListener('click', () => CoreApp.exportCurrentDeck());
+        document.getElementById('global-mix-btn')?.addEventListener('click', () => CoreApp.openMixModal());
+        document.getElementById('btn-launch-mix')?.addEventListener('click', () => CoreApp.generateMixFromSelection());
+        document.getElementById('mix-select-all')?.addEventListener('click', () => CoreApp.toggleMixCheckboxes(true));
+        document.getElementById('mix-select-none')?.addEventListener('click', () => CoreApp.toggleMixCheckboxes(false));
+        document.querySelectorAll('.close-mix-modal').forEach(btn => btn.addEventListener('click', () => document.getElementById('mix-selection-modal').classList.add('hidden')));
+        
+        // Écouteurs pour la configuration des intervalles
+        document.getElementById('interval-form')?.addEventListener('submit', (e) => CoreApp.saveIntervalConfig(e));
+        document.querySelectorAll('.close-interval-modal').forEach(btn => btn.addEventListener('click', () => document.getElementById('interval-config-modal').classList.add('hidden')));
+        // Prévisualisation en direct de l'intervalle
+        document.getElementById('interval-value')?.addEventListener('input', CoreApp.updateIntervalPreview);
+        document.getElementById('interval-unit')?.addEventListener('change', CoreApp.updateIntervalPreview);
 
         document.querySelectorAll('.modal .close, .flashcard-container, #admin-panel, #github-guide-modal').forEach(el => {
             el.addEventListener('click', (e) => {
@@ -819,6 +871,279 @@ const CoreApp = {
                 }
             });
         });
+    },
+
+    // --- FONCTIONNALITÉS MIX & EXPORT ---
+
+    openMixModal: () => {
+        const selector = document.getElementById('csv-selector');
+        // On récupère les options valides (ignorer le placeholder vide)
+        const options = Array.from(selector.options).filter(opt => opt.value); 
+        
+        if (options.length === 0) {
+            alert("Aucun fichier CSV détecté pour le moment.");
+            return;
+        }
+
+        const container = document.getElementById('mix-checkbox-list');
+        container.innerHTML = '';
+
+        options.forEach((opt, idx) => {
+            const div = document.createElement('div');
+            div.className = 'flex items-center gap-2 p-2 hover:bg-white rounded border border-transparent hover:border-gray-200 transition-colors';
+            
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.id = `mix-check-${idx}`;
+            checkbox.value = opt.value;
+            checkbox.dataset.name = opt.dataset.name || opt.text;
+            checkbox.checked = true; // Coché par défaut
+            checkbox.className = 'w-4 h-4 text-purple-600 rounded focus:ring-purple-500 mix-checkbox';
+
+            const label = document.createElement('label');
+            label.htmlFor = `mix-check-${idx}`;
+            label.className = 'text-sm text-gray-700 cursor-pointer flex-1 select-none';
+            label.textContent = opt.dataset.name || opt.text;
+
+            div.appendChild(checkbox);
+            div.appendChild(label);
+            container.appendChild(div);
+        });
+
+        document.getElementById('mix-selection-modal').classList.remove('hidden');
+    },
+
+    toggleMixCheckboxes: (state) => {
+        document.querySelectorAll('.mix-checkbox').forEach(cb => cb.checked = state);
+    },
+
+    generateMixFromSelection: async () => {
+        const checkboxes = document.querySelectorAll('.mix-checkbox:checked');
+        if (checkboxes.length === 0) {
+            alert("Veuillez sélectionner au moins un paquet.");
+            return;
+        }
+
+        const cardCountInput = document.getElementById('mix-card-count');
+        const cardsPerDeck = parseInt(cardCountInput.value, 10) || 5;
+        if (cardsPerDeck < 1) {
+            alert("Le nombre de cartes par paquet doit être d'au moins 1.");
+            cardCountInput.value = '1';
+            return;
+        }
+        const shuffleGlobally = document.getElementById('mix-shuffle-globally').checked;
+
+
+        document.getElementById('mix-selection-modal').classList.add('hidden');
+
+        const status = document.getElementById('csv-load-status');
+        status.classList.remove('hidden');
+        status.textContent = "Préparation de la salade de connaissances... 🥗";
+        status.className = "mt-2 w-full text-sm text-purple-600 animate-pulse";
+
+        let mixedDeck = [];
+        let loadedCount = 0;
+
+        try {
+            for (const cb of checkboxes) {
+                const url = cb.value;
+                const filename = cb.dataset.name;
+
+                try {
+                    const fetchUrl = new URL(url, window.location.href);
+                    fetchUrl.searchParams.set('_t', Date.now());
+                    const response = await fetch(fetchUrl.toString());
+                    if (!response.ok) continue;
+
+                    const text = await response.text();
+                    let data = CoreApp.parseCSV(text);
+                    
+                    // IMPORTANT : On applique l'état sauvegardé (boîtes, dates)
+                    data = CardPersistence.applyState(filename, data);
+
+                    // Mélange Fisher-Yates
+                    for (let i = data.length - 1; i > 0; i--) {
+                        const j = Math.floor(Math.random() * (i + 1));
+                        [data[i], data[j]] = [data[j], data[i]];
+                    }
+                    
+                    // On prend le nombre de cartes défini (ou moins si le paquet est petit)
+                    const selection = data.slice(0, cardsPerDeck).map(card => ({
+                        ...card,
+                        sourceFilename: filename, // On garde la trace du fichier source
+                        originalId: card.id       // On garde l'ID original pour la sauvegarde
+                    }));
+
+                    mixedDeck = mixedDeck.concat(selection);
+                    loadedCount++;
+                } catch (e) {
+                    console.warn(`Impossible de charger ${filename}`, e);
+                }
+            }
+
+            // Si l'option est cochée, on mélange le paquet final
+            if (shuffleGlobally) {
+                for (let i = mixedDeck.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [mixedDeck[i], mixedDeck[j]] = [mixedDeck[j], mixedDeck[i]];
+                }
+            }
+
+            // Réassignation des IDs pour la session courante (0, 1, 2...)
+            mixedDeck = mixedDeck.map((card, index) => ({ ...card, id: index }));
+
+            CoreApp.csvData = mixedDeck;
+            CoreApp.csvData.filename = `MIX_ALEATOIRE_${new Date().toISOString().slice(0,10)}.csv`;
+            
+            document.getElementById('reset-deck-btn').classList.add('hidden');
+            document.getElementById('export-deck-btn').classList.remove('hidden'); // Afficher le bouton export
+            
+            CoreApp.renderBoxes();
+            CoreApp.renderDeckOverview();
+            StatsUI.renderDifficultyStats();
+            
+            status.textContent = `Mix prêt ! ${mixedDeck.length} cartes tirées de ${loadedCount} fichiers.`;
+            status.className = "mt-2 w-full text-sm text-green-600";
+
+            SessionManager.start("SESSION_MIX", mixedDeck);
+            CoreApp.startReview();
+
+        } catch (err) {
+            console.error(err);
+            status.textContent = "Erreur lors de la création du mix.";
+            status.className = "mt-2 w-full text-sm text-red-600";
+        }
+    },
+
+    // --- GESTION INTERVALLES UI ---
+    openIntervalConfig: (boxNum) => {
+        const config = IntervalManager.get(boxNum);
+        document.getElementById('interval-box-num').textContent = boxNum;
+        document.getElementById('config-box-id').value = boxNum;
+        document.getElementById('interval-value').value = config.val;
+        document.getElementById('interval-unit').value = config.unit;
+        document.getElementById('interval-config-modal').classList.remove('hidden');
+        // Mettre à jour la prévisualisation à l'ouverture
+        CoreApp.updateIntervalPreview();
+    },
+
+    saveIntervalConfig: (e) => {
+        e.preventDefault();
+        const boxNum = document.getElementById('config-box-id').value;
+        const val = document.getElementById('interval-value').value;
+        const unit = document.getElementById('interval-unit').value;
+        const applyToAll = document.getElementById('interval-apply-all').checked;
+
+        if (applyToAll) {
+            IntervalManager.updateAllBasedOn(boxNum, val, unit);
+        } else {
+            IntervalManager.set(boxNum, val, unit);
+        }
+        
+        document.getElementById('interval-config-modal').classList.add('hidden');
+        CoreApp.renderBoxes(); // Rafraîchir l'affichage
+    },
+
+    // Calcule la prochaine date de révision pour une boîte avec un intervalle temporaire
+    calculateNextReviewForBox: (boxNum, cards, intervalConfig) => {
+        const now = new Date();
+        let earliestDate = null;
+        let pendingCount = 0;
+
+        cards.forEach(card => {
+            if (!card.lastReview) {
+                pendingCount++;
+            } else {
+                const last = new Date(card.lastReview);
+                if (!isNaN(last.getTime())) {
+                    const next = new Date(last);
+                    if (intervalConfig.unit === 'minutes') next.setMinutes(next.getMinutes() + intervalConfig.val);
+                    else if (intervalConfig.unit === 'hours') next.setHours(next.getHours() + intervalConfig.val);
+                    else next.setDate(next.getDate() + intervalConfig.val);
+
+                    if (next <= now) {
+                        pendingCount++;
+                    } else {
+                        if (!earliestDate || next < earliestDate) {
+                            earliestDate = next;
+                        }
+                    }
+                } else {
+                    pendingCount++;
+                }
+            }
+        });
+
+        if (pendingCount > 0) return "Maintenant";
+        if (earliestDate) {
+            const dateStr = earliestDate.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' });
+            const timeStr = earliestDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+            return `${dateStr} à ${timeStr}`;
+        }
+        return "Aucune";
+    },
+
+    // Met à jour le texte de prévisualisation dans la modale d'intervalle
+    updateIntervalPreview: () => {
+        const boxNum = document.getElementById('config-box-id').value;
+        const val = parseInt(document.getElementById('interval-value').value, 10);
+        const unit = document.getElementById('interval-unit').value;
+        const previewEl = document.getElementById('interval-preview-date');
+
+        if (!boxNum || isNaN(val) || val < 1) {
+            previewEl.textContent = '-';
+            return;
+        }
+
+        const cards = CoreApp.csvData.filter(c => c.box == boxNum);
+        const tempIntervalConfig = { val, unit };
+        const previewText = CoreApp.calculateNextReviewForBox(boxNum, cards, tempIntervalConfig);
+        previewEl.textContent = cards.length > 0 ? previewText : 'Boîte vide';
+    },
+
+    exportCurrentDeck: () => {
+        if (!CoreApp.csvData || CoreApp.csvData.length === 0) {
+            alert("Rien à exporter.");
+            return;
+        }
+
+        // Utilisation du point-virgule comme séparateur pour être cohérent avec l'import/export avancé
+        let csvContent = "question_content;question_content_image;answer_content;answer_content_image;box_number;last_reviewed\n";
+        
+        // Fonction pour forcer les guillemets sur tous les champs (format strict demandé)
+        const escapeCsv = (str) => {
+            const stringified = (str === undefined || str === null) ? "" : String(str);
+            return `"${stringified.replace(/"/g, '""')}"`;
+        };
+
+        CoreApp.csvData.forEach(card => {
+            let dateStr = card.lastReview || '';
+            if (dateStr.includes('T')) dateStr = dateStr.replace('T', ' ').split('.')[0];
+
+            const row = [
+                escapeCsv(card.question),
+                escapeCsv(card.qImage),
+                escapeCsv(card.answer),
+                escapeCsv(card.aImage),
+                escapeCsv(card.box || 1),
+                escapeCsv(dateStr)
+            ].join(';');
+            csvContent += row + "\n";
+        });
+
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement("a");
+        const url = URL.createObjectURL(blob);
+        
+        let exportName = CoreApp.csvData.filename || "export_leitner.csv";
+        if (!exportName.toLowerCase().endsWith('.csv')) exportName += '.csv';
+        
+        link.setAttribute("href", url);
+        link.setAttribute("download", exportName);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
     },
 
     closeFlashcard: () => {
@@ -924,7 +1249,8 @@ const CoreApp = {
         const now = new Date();
         let earliestDate = null;
         let pendingCount = 0; // Nombre de cartes à réviser maintenant
-        const intervalDays = BOX_INTERVALS[boxNum] || 1;
+        const intervalConfig = IntervalManager.get(boxNum);
+
         cards.forEach(card => {
             if (!card.lastReview) {
                 pendingCount++;
@@ -932,7 +1258,12 @@ const CoreApp = {
                 const last = new Date(card.lastReview);
                 if (!isNaN(last.getTime())) {
                     const next = new Date(last);
-                    next.setDate(last.getDate() + intervalDays);
+                    
+                    // Calcul dynamique selon l'unité choisie
+                    if (intervalConfig.unit === 'minutes') next.setMinutes(next.getMinutes() + intervalConfig.val);
+                    else if (intervalConfig.unit === 'hours') next.setHours(next.getHours() + intervalConfig.val);
+                    else next.setDate(next.getDate() + intervalConfig.val); // Jours par défaut
+
                     if (next <= now) pendingCount++;
                     else {
                         if (!earliestDate || next < earliestDate) earliestDate = next;
@@ -959,26 +1290,50 @@ const CoreApp = {
             const cards = CoreApp.csvData.filter(c => c.box === num);
             const count = cards.length;
             const reviewInfo = CoreApp.getNextReviewDateForBox(num, cards);
-            const reviewHtml = reviewInfo.urgent 
-                ? `<span class="text-xs font-bold text-orange-600 bg-orange-100 px-2 py-1 rounded-full">À réviser (${reviewInfo.count})</span>`
-                : `<span class="text-xs text-gray-500">Prochaine : ${reviewInfo.text}</span>`;
+            
+            // Récupération de la config pour l'affichage
+            const conf = IntervalManager.get(num);
+            const unitLabels = { minutes: 'min', hours: 'h', days: 'j' };
+            const intervalLabel = `${conf.val}${unitLabels[conf.unit]}`;
+
+            const textColor = reviewInfo.urgent ? 'text-orange-600 font-bold' : 'text-gray-500';
+            // MODIFICATION : Le texte est simplifié pour ne plus afficher le compte redondant.
+            const dateText = reviewInfo.urgent ? `Maintenant` : `Prochaine : ${reviewInfo.text}`;
 
             const div = document.createElement('div');
-            div.className = `bg-white p-4 rounded shadow border-t-4 box-border-${num} hover:shadow-lg transition cursor-pointer flex flex-col justify-between`;
+            // MODIFICATION : Le curseur n'est plus sur toute la boîte pour éviter la confusion.
+            div.className = `bg-white p-4 rounded shadow border-t-4 box-border-${num} hover:shadow-lg transition flex flex-col justify-between`;
+            
+            // MODIFICATION : La structure est divisée en deux zones distinctes pour des clics séparés.
             div.innerHTML = `
-                <div>
+                <div class="review-trigger-area cursor-pointer flex-grow">
                     <h3 class="font-bold text-gray-700 text-box${num}">Boîte ${num}</h3>
                     <p class="text-3xl font-bold mt-2 text-gray-800 transition-all duration-300" id="box-count-${num}">${count}</p>
                     <p class="text-xs text-gray-500 uppercase tracking-wide mb-3">cartes</p>
                 </div>
-                <div class="mt-2 border-t pt-2">${reviewHtml}</div>
+                <div class="interval-config-area mt-2 border-t pt-2 hover:bg-gray-50 transition-colors rounded -mx-2 px-2 py-1 cursor-pointer" title="Double-cliquer pour changer l'intervalle (${intervalLabel})">
+                    <div class="flex justify-between items-center">
+                        <span class="text-xs ${textColor}">${dateText}</span>
+                        <span class="text-[10px] text-gray-400 bg-gray-100 px-1 rounded border">⏱️ ${intervalLabel}</span>
+                    </div>
+                </div>
             `;
-            div.addEventListener('click', () => {
+
+            // MODIFICATION : L'écouteur de clic est uniquement sur la partie haute.
+            const topPart = div.querySelector('.review-trigger-area');
+            topPart.addEventListener('click', () => {
                 if(cards.length) {
                     SessionManager.start(CoreApp.csvData.filename, cards);
                     CoreApp.startReview();
                 } else alert('Boîte vide.');
             });
+
+            // MODIFICATION : L'écouteur de double-clic est uniquement sur la partie basse.
+            const bottomPart = div.querySelector('.interval-config-area');
+            bottomPart.addEventListener('dblclick', () => {
+                CoreApp.openIntervalConfig(num);
+            });
+
             container.appendChild(div);
         });
     },
@@ -1275,7 +1630,11 @@ const CoreApp = {
             card.lastReview = new Date().toISOString(); 
             card.difficulty = difficulty;
 
-            CardPersistence.updateCard(CoreApp.csvData.filename, cardId, newBox, card.lastReview, difficulty);
+            // SAUVEGARDE INTELLIGENTE : Si c'est un mix, on sauvegarde dans le fichier d'origine
+            const targetFilename = card.sourceFilename || CoreApp.csvData.filename;
+            const targetId = (card.originalId !== undefined) ? card.originalId : cardId;
+
+            CardPersistence.updateCard(targetFilename, targetId, newBox, card.lastReview, difficulty);
             
             const feedback = document.createElement('div');
             feedback.className = `fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 px-6 py-4 rounded-xl font-bold text-white shadow-2xl z-[100] text-xl flex flex-col items-center gap-2 animate-bounce ${isCorrect ? 'bg-green-600' : 'bg-red-500'}`;
@@ -1286,6 +1645,14 @@ const CoreApp = {
             else message = `👍 Boîte ${oldBox} ➔ Boîte ${newBox}`;
             
             feedback.innerHTML = `<span>${message}</span>`;
+            
+            if (card.sourceFilename) {
+                const sourceBadge = document.createElement('div');
+                sourceBadge.className = "text-xs font-normal opacity-80 mt-1";
+                sourceBadge.textContent = `Source : ${UI.getDomainFromFilename(card.sourceFilename)}`;
+                feedback.appendChild(sourceBadge);
+            }
+
             document.body.appendChild(feedback);
             
             setTimeout(() => {
