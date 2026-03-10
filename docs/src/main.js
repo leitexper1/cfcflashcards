@@ -1311,10 +1311,13 @@ const CoreApp = {
                     <p class="text-3xl font-bold mt-2 text-gray-800 transition-all duration-300" id="box-count-${num}">${count}</p>
                     <p class="text-xs text-gray-500 uppercase tracking-wide mb-3">cartes</p>
                 </div>
-                <div class="interval-config-area mt-2 border-t pt-2 hover:bg-gray-50 transition-colors rounded -mx-2 px-2 py-1 cursor-pointer" title="Double-cliquer pour changer l'intervalle (${intervalLabel})">
+                <div class="interval-config-area group mt-2 border-t pt-2 hover:bg-gray-50 transition-colors rounded -mx-2 px-2 py-1 cursor-pointer" title="Double-cliquer pour changer l'intervalle (${intervalLabel})">
                     <div class="flex justify-between items-center">
                         <span class="text-xs ${textColor}">${dateText}</span>
-                        <span class="text-[10px] text-gray-400 bg-gray-100 px-1 rounded border">⏱️ ${intervalLabel}</span>
+                        <div class="flex items-center gap-1">
+                            <span class="text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity duration-300 text-xs" aria-hidden="true">⚙️</span>
+                            <span class="text-[10px] text-gray-400 bg-gray-100 px-1 rounded border">⏱️ ${intervalLabel}</span>
+                        </div>
                     </div>
                 </div>
             `;

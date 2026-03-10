@@ -1,6 +1,6 @@
 [
+  "csv/EITPF_planformationPELE.csv",
   "csv/ELECTRO_formules.csv",
-  "csv/ELECTRO_formules_1.csv",
   "csv/ELECTRO_generalites.csv",
   "csv/ELECTRONIQUE_generalites.csv",
   "csv/MATERIEL_cfc_pele.csv",
@@ -12,6 +12,5 @@
   "csv/SIA_questions_2011_2023.csv",
   "csv/TELECOM_acronymes.csv",
   "csv/TELECOM_dit.csv",
-  "csv/TELECOM_figures.csv",
-  "csv/EITPF_planformationPELE.csv"
+  "csv/TELECOM_figures.csv"
 ]
