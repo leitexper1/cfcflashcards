@@ -1,4 +1,4 @@
-https://cfcleitner.github.io/cfcleitner1/
+https://leitexper1.github.io/cfcflashcards
 
 
 # 🧠✨ Le système de Leitner : apprendre pour de vrai, une bonne fois pour toutes 📚🔥
@@ -7,7 +7,7 @@ Apprendre ne consiste pas à relire des notes à l’infini ❌
 Apprendre, c’est **se souvenir au bon moment** ✅  
 
 C’est exactement ce que fait le **système de Leitner**, et c’est pour cela que ce site existe 🚀
-(https://cfcleitner.github.io/cfcleitner1/)
+(https://leitexper1.github.io/cfcflashcards)
 
 ---
 
