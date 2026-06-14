@@ -80,7 +80,7 @@
         // La déduplication finale par Map assure que si, d'une manière ou d'une autre, différents objets
         // avec le même filenameOnly ont été ajoutés, un seul reste.
         // Cette étape est principalement pour la robustesse, car 'seen' devrait empêcher la plupart des doublons.
-        return [...new Map(files.map(item => [item.name, item])).values()].sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+        return [...new Map(files.map(item => [item.name, item])).values()].sort((a, b) => a.name.localeCompare(b.name, 'fr', { numeric: true }));
       }
     
       // --- LOGIQUE DE REMPLISSAGE DU SELECT ---

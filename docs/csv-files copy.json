@@ -70,16 +70,6 @@
     "updated": "2026-06-14 16:55:32"
   },
   {
-    "path": "csv/FET_14TransformateursChap14.csv",
-    "count": 21,
-    "updated": "2026-06-14 17:30:04"
-  },
-  {
-    "path": "csv/FET_15EclairageChap15.csv",
-    "count": 23,
-    "updated": "2026-06-14 17:36:01"
-  },
-  {
     "path": "csv/MATERIEL_cfc_pele.csv",
     "count": 47,
     "updated": "2026-05-12 00:14:51"
@@ -105,11 +95,6 @@
     "updated": "2026-01-25 19:05:54"
   },
   {
-    "path": "csv/PFEIT_planformationPELE.csv",
-    "count": 97,
-    "updated": "2026-03-07 08:25:17"
-  },
-  {
     "path": "csv/SIA_questions_2011_2023.csv",
     "count": 52,
     "updated": "2026-05-13 12:25:50"
@@ -128,5 +113,10 @@
     "path": "csv/TELECOM_figures.csv",
     "count": 4,
     "updated": "2026-02-05 08:37:03"
+  },
+    {
+    "path": "csv/EITPF_planformationPELE.csv",
+    "count": 97,
+    "updated": "2026-03-07 08:25:17"
   }
 ]

@@ -20,6 +20,9 @@ try {
     }
 } catch (e) { console.error("Erreur scan dossier csv/:", e); }
 
+// Tri naturel pour que FET_10 soit après FET_9
+csvFiles.sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+
 // Écriture du fichier JSON
 const jsonContent = JSON.stringify(csvFiles, null, 2);
 fs.writeFileSync(outputFile, jsonContent);

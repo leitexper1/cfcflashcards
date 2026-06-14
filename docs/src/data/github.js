@@ -73,6 +73,18 @@ export class GitHubManager {
     }
 
     async loadCSVList() {
+        // 1. Tenter de charger le manifeste local (csv-files.json) en premier.
+        // C'est le fichier maître pour l'ordre d'affichage défini par l'utilisateur.
+        try {
+            const localFiles = await this.loadLocalCSVList();
+            if (localFiles && localFiles.length > 0) {
+                this.csvFiles = localFiles;
+                return this.csvFiles;
+            }
+        } catch (error) {
+            console.warn('Le manifeste local n’a pas pu être chargé, repli sur l’API GitHub.', error);
+        }
+
         const repoPath = this.normaliseRepoPath(this.config.repoPath || '');
         const baseEndpoint = `/contents${repoPath || ''}`;
         const branches = this.buildBranchFallbacks();
@@ -103,7 +115,9 @@ export class GitHubManager {
                             download_url: item.download_url
                                 || `https://raw.githubusercontent.com/${this.config.repoOwner}/${this.config.repoName}/${resolvedBranch}/${encodedPath}`
                         };
-                    });
+                    })
+                    // Tri naturel pour l'API GitHub (garantit FET_9 < FET_10)
+                    .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
 
                 this.localBaseUrl = null;
 
@@ -121,16 +135,6 @@ export class GitHubManager {
                     break;
                 }
             }
-        }
-
-        try {
-            const localFiles = await this.loadLocalCSVList();
-            if (localFiles.length > 0) {
-                this.csvFiles = localFiles;
-                return this.csvFiles;
-            }
-        } catch (error) {
-            lastError = lastError || error;
         }
 
         console.error('Erreur de chargement de la liste CSV:', lastError);
@@ -189,9 +193,14 @@ export class GitHubManager {
                         : [];
 
                 const files = entries
-                    .map(entry => (typeof entry === 'string' ? entry : entry?.name))
-                    .filter(Boolean)
-                    .map(name => this.buildLocalFileEntry(name, baseUrl))
+                    .map(entry => {
+                        const pathOrName = typeof entry === 'string' ? entry : (entry?.name || entry?.path);
+                        if (!pathOrName) return null;
+                        
+                        const fileObj = this.buildLocalFileEntry(pathOrName, baseUrl);
+                        // On fusionne les données du manifeste (count, updated) avec l'objet fichier
+                        return fileObj ? { ...fileObj, ...(typeof entry === 'object' ? entry : {}) } : null;
+                    })
                     .filter(Boolean);
 
                 if (files.length > 0) {
@@ -296,7 +305,7 @@ export class GitHubManager {
         };
         const separator = detectSeparator(lines.slice(0, 10));
 
-        const headers = headerLine.split(separator).map(h => h.trim());
+        const headers = lines[0].split(separator).map(h => h.trim());
         const expectedHeaders = [
             'question_content',
             'question_content_image',

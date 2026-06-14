@@ -249,8 +249,12 @@ const UI = {
     setupMathJax: () => {
         if (document.getElementById('mathjax-script')) return;
         window.MathJax = {
-            tex: { inlineMath: [['$', '$'], ['\\(', '\\)']] },
-            svg: { fontCache: 'none' },
+            tex: { 
+                inlineMath: [['$', '$'], ['\\(', '\\)']]
+            },
+            options: {
+                skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre']
+            },
             startup: { typeset: false }
         };
         const script = document.createElement('script');
@@ -295,7 +299,7 @@ const UI = {
         
         if (cleanName.includes('_')) {
             const parts = cleanName.split('_');
-            return parts[0].charAt(0).toUpperCase() + parts[0].slice(1);
+            if (parts[0]) return parts[0].charAt(0).toUpperCase() + parts[0].slice(1);
         }
         return 'Divers';
     },
@@ -379,19 +383,15 @@ const UI = {
         const uniqueFiles = [];
         const seen = new Set();
         filteredFiles.forEach(f => {
-            const normalizedName = f.name ? f.name.toLowerCase().trim() : '';
-            if (normalizedName && !seen.has(normalizedName)) {
-                seen.add(normalizedName);
+            // Extraction du nom même si f.name est absent (cas du manifest local via f.path)
+            const rawName = f.name || (f.path ? f.path.split('/').pop() : '');
+            const normalizedKey = rawName.toLowerCase().trim();
+            
+            if (normalizedKey && !seen.has(normalizedKey)) {
+                seen.add(normalizedKey);
+                if (!f.name) f.name = rawName; // On garantit la propriété name pour le tri
                 uniqueFiles.push(f);
             }
-        });
-
-        // Trier par domaine puis par nom pour une meilleure organisation visuelle
-        uniqueFiles.sort((a, b) => {
-            const domainA = UI.getDomainFromFilename(a.name);
-            const domainB = UI.getDomainFromFilename(b.name);
-            if (domainA !== domainB) return domainA.localeCompare(domainB, 'fr');
-            return a.name.localeCompare(b.name, 'fr');
         });
 
         // 3. Peupler le select caché (pour la logique interne) et préparer les données du tableau
@@ -459,7 +459,7 @@ const UI = {
         });
 
         // 4. Construction de l'interface Data Explorer
-        const domains = [...new Set(tableData.map(i => i.domain))].sort();
+        const domains = [...new Set(tableData.map(i => i.domain))].sort((a, b) => a.localeCompare(b, 'fr', { numeric: true }));
 
         // Zone de contrôles (Recherche + Filtre)
         const controlsDiv = document.createElement('div');
