@@ -52,7 +52,7 @@
   {
     "path": "csv/FET_8ElectrostatiqueChap8.csv",
     "count": 14,
-    "updated": "2026-06-14 16:32:02"
+    "updated": "2026-10-26 12:19:02"
   },
   {
     "path": "csv/FET_9InstrumentsMesureChap9.csv",
@@ -72,7 +72,7 @@
   {
     "path": "csv/FET_14TransformateursChap14.csv",
     "count": 21,
-    "updated": "2026-06-14 20:08:36"
+    "updated": "2026-06-14 20:10:42"
   },
   {
     "path": "csv/FET_15EclairageChap15.csv",
@@ -121,12 +121,17 @@
   },
   {
     "path": "csv/TELECOM_dit.csv",
-    "count": 13,
-    "updated": "2026-03-03 01:18:56"
+    "count": 40,
+    "updated": "2026-10-01 10:17:17"
   },
   {
     "path": "csv/TELECOM_figures.csv",
     "count": 4,
     "updated": "2026-02-05 08:37:03"
+  },
+  {
+    "path": "csv/TELECOM_FO.csv",
+    "count": 14,
+    "updated": "2026-11-06 08:16:51"
   }
 ]

@@ -1,0 +1,132 @@
+[
+  {
+    "path": "csv/ELECTRO_formules_20260614_151428.csv",
+    "count": 32,
+    "updated": "2026-06-14 15:14:28"
+  },
+  {
+    "path": "csv/ELECTRO_generalites.csv",
+    "count": 66,
+    "updated": "2026-05-13 01:32:47"
+  },
+  {
+    "path": "csv/ELECTRONIQUE_generalites.csv",
+    "count": 20,
+    "updated": "2026-03-10 22:53:57"
+  },
+  {
+    "path": "csv/FET_1NotionsBaseChap1.csv",
+    "count": 26,
+    "updated": "2026-06-14 15:51:48"
+  },
+  {
+    "path": "csv/FET_2GrandeursFondamentalesChap2.csv",
+    "count": 20,
+    "updated": "2026-06-14 15:57:03"
+  },
+  {
+    "path": "csv/FET_3ResistancesCouplagesChap3.csv",
+    "count": 12,
+    "updated": "2026-06-14 16:01:32"
+  },
+  {
+    "path": "csv/FET_4EnergiePuissanceRendementChap4.csv",
+    "count": 16,
+    "updated": "2026-06-14 16:06:42"
+  },
+  {
+    "path": "csv/FET_5EffetsCalorifiquesChap5.csv",
+    "count": 16,
+    "updated": "2026-06-14 19:08:06"
+  },
+  {
+    "path": "csv/FET_6SourcesChimiquesChap6.csv",
+    "count": 15,
+    "updated": "2026-06-14 16:17:25"
+  },
+  {
+    "path": "csv/FET_7MagnetismeChap7.csv",
+    "count": 20,
+    "updated": "2026-06-14 16:22:53"
+  },
+  {
+    "path": "csv/FET_8ElectrostatiqueChap8.csv",
+    "count": 14,
+    "updated": "2026-06-14 16:32:02"
+  },
+  {
+    "path": "csv/FET_9InstrumentsMesureChap9.csv",
+    "count": 20,
+    "updated": "2026-06-14 16:34:33"
+  },
+  {
+    "path": "csv/FET_10AlternatifMonophaseChap10.csv",
+    "count": 46,
+    "updated": "2026-06-14 16:44:28"
+  },
+  {
+    "path": "csv/FET_11TriphaseChap11.csv",
+    "count": 17,
+    "updated": "2026-06-14 16:55:32"
+  },
+  {
+    "path": "csv/FET_14TransformateursChap14.csv",
+    "count": 21,
+    "updated": "2026-06-14 20:08:36"
+  },
+  {
+    "path": "csv/FET_15EclairageChap15.csv",
+    "count": 23,
+    "updated": "2026-06-14 17:36:01"
+  },
+  {
+    "path": "csv/MATERIEL_cfc_pele.csv",
+    "count": 47,
+    "updated": "2026-05-12 00:14:51"
+  },
+  {
+    "path": "csv/NIBT_definitions.csv",
+    "count": 254,
+    "updated": "2025-09-01 23:22:43"
+  },
+  {
+    "path": "csv/NIBT_oibt_question_1.csv",
+    "count": 46,
+    "updated": "2026-01-22 09:57:50"
+  },
+  {
+    "path": "csv/NIBT_questions_generales.csv",
+    "count": 20,
+    "updated": "2026-02-03 07:02:14"
+  },
+  {
+    "path": "csv/NIBT_tableaux_figures.csv",
+    "count": 65,
+    "updated": "2026-01-25 19:05:54"
+  },
+  {
+    "path": "csv/PFEIT_planformationPELE.csv",
+    "count": 97,
+    "updated": "2026-03-07 08:25:17"
+  },
+  {
+    "path": "csv/SIA_questions_2011_2023.csv",
+    "count": 52,
+    "updated": "2026-05-13 12:25:50"
+  },
+  {
+    "path": "csv/TELECOM_acronymes.csv",
+    "count": 109,
+    "updated": "2026-01-20 18:34:59"
+  },
+  {
+    "path": "csv/TELECOM_dit.csv",
+    "count": 13,
+    "updated": "2026-03-03 01:18:56"
+  },
+  {
+    "path": "csv/TELECOM_figures.csv",
+    "count": 4,
+    "updated": "2026-02-05 08:37:03"
+  }
+]
